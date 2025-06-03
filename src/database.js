@@ -1,29 +1,23 @@
-const mysql = require('mysql2/promise');
+const { Pool } = require('pg');
 require('dotenv').config();
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'cafe_loyalty',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+// Создаем пул подключений к PostgreSQL
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-async function initDb() {
+// Функция для проверки подключения к базе данных
+const connectToDatabase = async () => {
   try {
-    // Test database connection
-    const connection = await pool.getConnection();
+    const client = await pool.connect();
     console.log('Database connected successfully');
-    connection.release();
+    client.release();
+    return pool;
   } catch (error) {
     console.error('Database connection failed:', error);
     throw error;
   }
-}
-
-module.exports = {
-  pool,
-  initDb
 };
+
+module.exports = { pool, connectToDatabase };

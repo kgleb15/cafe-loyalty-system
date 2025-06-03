@@ -5,80 +5,78 @@ const { pool } = require('../database');
 
 const router = express.Router();
 
-// Register a new user
-router.post('/register', async (req, res, next) => {
+// Регистрация пользователя
+router.post('/register', async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { name, email, password } = req.body;
 
-    // Validate input
-    if (!email || !password || !name) {
-      return res.status(400).json({ error: 'All fields are required' });
+    // Проверка обязательных полей
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'All fields are required' });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
-    }
-
-    // Check if email already exists
-    const [existingUsers] = await pool.query(
-      'SELECT id FROM users WHERE email = ?',
+    // Проверка, существует ли пользователь
+    const userCheck = await pool.query(
+      'SELECT * FROM users WHERE email = $1',
       [email]
     );
 
-    if (existingUsers.length > 0) {
-      return res.status(409).json({ error: 'Email already registered' });
+    if (userCheck.rows.length > 0) {
+      return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Хеширование пароля
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Insert new user
-    const [result] = await pool.query(
-      'INSERT INTO users (email, password_hash, name, balance) VALUES (?, ?, ?, 0)',
-      [email, hashedPassword, name]
+    // Создание пользователя
+    const result = await pool.query(
+      'INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email',
+      [name, email, hashedPassword]
     );
 
     res.status(201).json({
       message: 'User registered successfully',
-      userId: result.insertId
+      user: result.rows[0]
     });
   } catch (error) {
-    next(error);
+    console.error('Registration error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Login user
-router.post('/login', async (req, res, next) => {
+// Авторизация пользователя
+router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validate input
+    // Проверка обязательных полей
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+      return res.status(400).json({ message: 'All fields are required' });
     }
 
-    // Find user by email
-    const [users] = await pool.query(
-      'SELECT id, email, password_hash, name FROM users WHERE email = ?',
+    // Поиск пользователя
+    const result = await pool.query(
+      'SELECT * FROM users WHERE email = $1',
       [email]
     );
 
-    if (users.length === 0) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+    if (result.rows.length === 0) {
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    const user = users[0];
+    const user = result.rows[0];
 
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-    if (!isPasswordValid) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+    // Проверка пароля
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // Generate JWT
+    // Создание JWT токена
     const token = jwt.sign(
-      { userId: user.id, email: user.email, name: user.name },
-      process.env.JWT_SECRET || 'your_jwt_secret',
+      { id: user.id },
+      process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
@@ -87,12 +85,13 @@ router.post('/login', async (req, res, next) => {
       token,
       user: {
         id: user.id,
-        email: user.email,
-        name: user.name
+        name: user.name,
+        email: user.email
       }
     });
   } catch (error) {
-    next(error);
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

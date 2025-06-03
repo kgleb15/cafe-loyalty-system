@@ -1,8 +1,11 @@
 const express = require('express');
 const cors = require('cors');
+const { connectToDatabase } = require('./database');
+const { initializeDatabase } = require('./init-db');
 const authRoutes = require('./routes/auth');
 const pointsRoutes = require('./routes/points');
-const { initDb } = require('./database');
+
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,23 +18,21 @@ app.use(express.json());
 app.use('/api', authRoutes);
 app.use('/api', pointsRoutes);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
+// Простой маршрут для проверки работоспособности
+app.get('/', (req, res) => {
+  res.json({ message: 'Cafe Loyalty API is running' });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(err.statusCode || 500).json({
-    error: err.message || 'Internal Server Error'
-  });
-});
-
-// Initialize database and start server
+// Инициализация базы данных и запуск сервера
 async function startServer() {
   try {
-    await initDb();
+    // Подключение к базе данных
+    await connectToDatabase();
+    
+    // Инициализация таблиц
+    await initializeDatabase();
+    
+    // Запуск сервера
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
@@ -42,5 +43,3 @@ async function startServer() {
 }
 
 startServer();
-
-module.exports = app; // For testing
